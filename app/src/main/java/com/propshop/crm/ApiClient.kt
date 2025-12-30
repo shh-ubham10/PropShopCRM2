@@ -1,4 +1,2 @@
 package com.propshop.crm
 
-object RetrofitClient {
-}
