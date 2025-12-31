@@ -1,4 +1,6 @@
 package com.propshop.crm
 
-class LoginReuest {
-}
+data class LoginRequest(
+    val username: String,
+    val password: String
+)

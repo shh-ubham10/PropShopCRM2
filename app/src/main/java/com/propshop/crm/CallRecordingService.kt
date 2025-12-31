@@ -1,19 +1,14 @@
 package com.propshop.crm
 
-import android.app.*
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
 import android.content.Intent
 import android.media.MediaRecorder
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
-import com.propshop.crm.network.*
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.MultipartBody
-import okhttp3.RequestBody
-import retrofit2.Call
-import retrofit2.Callback
-import retrofit2.Response
 import java.io.File
 
 class CallRecordingService : Service() {
@@ -22,14 +17,17 @@ class CallRecordingService : Service() {
     private lateinit var outputFile: File
 
     private var phoneNumber: String = ""
-    private var callStartTime: String = ""
+    private var callStartTime: Long = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 
-        phoneNumber = intent?.getStringExtra("number") ?: ""
-        callStartTime = intent?.getStringExtra("time") ?: ""
+        phoneNumber = intent?.getStringExtra("number") ?: phoneNumber
+
+        intent?.getStringExtra("time")?.let {
+            callStartTime = it.toLongOrNull() ?: System.currentTimeMillis()
+        }
 
         when (intent?.getStringExtra("action")) {
             "start" -> startRecording()
@@ -40,7 +38,7 @@ class CallRecordingService : Service() {
     }
 
     private fun startRecording() {
-        createNotification()
+        startForeground(201, createNotification())
 
         val folder = File(filesDir, "recordings")
         if (!folder.exists()) folder.mkdirs()
@@ -67,52 +65,18 @@ class CallRecordingService : Service() {
     private fun stopRecording() {
         try {
             recorder?.stop()
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+        }
 
         recorder?.release()
         recorder = null
 
         stopForeground(true)
-
-        uploadToServer()
-
         stopSelf()
     }
 
-    private fun uploadToServer() {
-        val duration = "20" // TODO: auto-calculate later
+    private fun createNotification(): Notification {
 
-        // NEW OKHTTP 5 FORMAT
-        val requestFile = RequestBody.create(
-            "audio/*".toMediaType(),
-            outputFile
-        )
-
-        val audioPart = MultipartBody.Part.createFormData(
-            "audioFile",
-            outputFile.name,
-            requestFile
-        )
-
-        val numberPart = RequestBody.create("text/plain".toMediaType(), phoneNumber)
-        val timePart = RequestBody.create("text/plain".toMediaType(), callStartTime)
-        val durationPart = RequestBody.create("text/plain".toMediaType(), duration)
-
-        val api = RetrofitClient.instance.create(ApiService::class.java)
-
-        api.uploadCall(audioPart, numberPart, timePart, durationPart)
-            .enqueue(object : Callback<UploadResponse> {
-                override fun onResponse(call: Call<UploadResponse>, response: Response<UploadResponse>) {
-                    // success
-                }
-
-                override fun onFailure(call: Call<UploadResponse>, t: Throwable) {
-                    t.printStackTrace()
-                }
-            })
-    }
-
-    private fun createNotification() {
         val channelId = "call_recording_channel"
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -121,17 +85,15 @@ class CallRecordingService : Service() {
                 "Call Recording",
                 NotificationManager.IMPORTANCE_LOW
             )
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
+            getSystemService(NotificationManager::class.java)
+                .createNotificationChannel(channel)
         }
 
-        val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Recording Call")
-            .setContentText("Call recording active…")
+        return NotificationCompat.Builder(this, channelId)
+            .setContentTitle("PropShop CRM")
+            .setContentText("Call recording in progress")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setOngoing(true)
             .build()
-
-        startForeground(1, notification)
     }
 }

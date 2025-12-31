@@ -1,4 +1,12 @@
 package com.propshop.crm
 
-class LoginResponse {
-}
+data class LoginResponse(
+    val token: String,
+    val user: User
+)
+
+data class User(
+    val id: Int,
+    val username: String,
+    val role: String
+)

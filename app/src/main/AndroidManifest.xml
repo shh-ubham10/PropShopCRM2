@@ -1,40 +1,67 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Required for recording -->
+    <!-- ===================== -->
+    <!-- CORE PERMISSIONS -->
+    <!-- ===================== -->
+
+    <!-- Call recording -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-
-    <!-- Required for Foreground Microphone Service (Android 12–14) -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-
-    <!-- Phone state (detect incoming calls) -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
-    <!-- Storage permissions for Android 9 & below -->
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="28" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="28" />
-
-    <!-- New permission for Android 13+ -->
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!-- Internet -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- Notifications (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- ===================== -->
+    <!-- LOCATION PERMISSIONS -->
+    <!-- ===================== -->
 
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- Required for 24/7 tracking (Android 10+) -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
+    <!-- ===================== -->
+    <!-- FOREGROUND SERVICES -->
+    <!-- ===================== -->
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
+    <!-- ===================== -->
+    <!-- STORAGE (LEGACY ONLY) -->
+    <!-- ===================== -->
+
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+
+    <!-- ===================== -->
+    <!-- APPLICATION -->
+    <!-- ===================== -->
 
     <application
         android:allowBackup="true"
+        android:usesCleartextTraffic="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.PropShopCRM">
 
-        <!-- MAIN ACTIVITY -->
+    <!-- Main UI -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -44,7 +71,7 @@
             </intent-filter>
         </activity>
 
-        <!-- BROADCAST RECEIVER -->
+        <!-- Phone call listener -->
         <receiver
             android:name=".CallReceiver"
             android:exported="true">
@@ -53,11 +80,17 @@
             </intent-filter>
         </receiver>
 
-        <!-- CALL RECORDING SERVICE -->
+        <!-- Call recording service -->
         <service
             android:name=".CallRecordingService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <!-- 24/7 location tracking service -->
+        <service
+            android:name=".ForegroundLocationService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
 
     </application>
 
