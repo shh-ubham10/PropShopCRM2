@@ -1,0 +1,131 @@
+/* ---------------- LIGHT MODE ONLY ---------------- */
+
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;            /* cards, panels */
+  --muted-surface: #f3f5f7;      /* table headers */
+  --text: #111827;               /* main text */
+  --muted-text: #6b7280;         /* secondary text */
+  --accent: #2563eb;             /* primary blue */
+  --accent-light: #e0ebff;
+  --danger: #ef4444;
+  --shadow: 0 6px 18px rgba(16,24,40,0.06);
+  --border: rgba(0,0,0,0.1);
+}
+
+/* --- Base Page Styling --- */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+
+/* Content Containers */
+.app-container, .main-content, .page {
+  background: transparent;
+  color: var(--text);
+}
+
+/* Sidebar */
+.sidebar {
+  background: var(--surface);
+  color: var(--text);
+  border-right: 1px solid var(--border);
+}
+
+/* Cards & Panels */
+.card, .panel, .stat-card, .filter-box {
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+}
+
+/* Tables */
+.table-container {
+  background: transparent;
+}
+
+.table, table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--text);
+}
+
+.table thead th,
+.table-header,
+.table-head {
+  background: var(--muted-surface);
+  color: var(--text);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+
+.table tbody td,
+.table-row {
+  background: transparent;
+  color: var(--text);
+  border-bottom: 1px solid rgba(0,0,0,0.03);
+}
+
+/* Inputs, Selects, Datepicker */
+input, select, .input, .react-datepicker__input-container input {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  box-shadow: none;
+}
+
+::placeholder {
+  color: var(--muted-text);
+}
+
+/* Buttons */
+.btn, button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.btn.secondary {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+/* Pagination */
+.pagination, .pager {
+  color: var(--muted-text);
+}
+
+/* Export CSV Button */
+.top-action {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+/* Chart Canvas */
+.card .chart-canvas,
+.chart-container canvas {
+  background: transparent !important;
+}
+
+/* Force Table Header Text (some disappeared earlier) */
+th, .table thead th {
+  color: var(--text) !important;
+}
+
+/* Fixes for any UI libs forcing black/white */
+.some-ui-class-that-used-fixed-black,
+.some-ui-class-that-used-fixed-white {
+  color: var(--text) !important;
+  background: var(--surface) !important;
+}
