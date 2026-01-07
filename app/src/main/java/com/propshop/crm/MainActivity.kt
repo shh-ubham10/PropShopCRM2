@@ -20,21 +20,33 @@ class MainActivity : ComponentActivity() {
 
             val session = remember { SessionManager(this) }
 
+            var isLoggedIn by remember {
+                mutableStateOf(session.isLoggedIn())
+            }
+
             PropShopCRMTheme {
 
-                // 🔐 AUTH DECISION ONLY
-                if (!session.isLoggedIn()) {
+                if (!isLoggedIn) {
 
-                    LoginScreen { token, userId ->
-                        session.saveLogin(token, userId)
+                    // ✅ FIXED: accept 3 parameters
+                    LoginScreen { token, role, employeeId ->
+
+                        session.saveLogin(
+                            token = token,
+                            role = role,
+                            employeeId = employeeId
+                        )
+
+                        isLoggedIn = true   // 🔄 trigger recomposition
                     }
 
                 } else {
 
                     DashboardScreen(
-                        userRole = "employee", // later from API
+                        userRole = session.getRole(),
                         onLogout = {
                             session.logout()
+                            isLoggedIn = false  // 🔄 trigger recomposition
                         }
                     )
                 }

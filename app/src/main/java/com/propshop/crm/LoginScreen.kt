@@ -1,20 +1,26 @@
 package com.propshop.crm
 
 import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
-    onSuccess: (String, Int) -> Unit
+    onLoginSuccess: (token: String, role: String, employeeId: String) -> Unit
 ) {
     val context = LocalContext.current
 
@@ -22,47 +28,77 @@ fun LoginScreen(
     var password by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center
-    ) {
+    Scaffold { padding ->
+        Column(
+            modifier = Modifier
+                .padding(padding)
+                .padding(horizontal = 24.dp)
+                .fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
 
-        OutlinedTextField(
-            value = username,
-            onValueChange = { username = it },
-            label = { Text("Username") },
-            modifier = Modifier.fillMaxWidth()
-        )
+            // 🔵 LOGO
+            Image(
+                painter = painterResource(id = R.drawable.propshop_logo),
+                contentDescription = "PropShop Logo",
+                modifier = Modifier
+                    .height(90.dp)
+                    .padding(bottom = 16.dp)
+            )
 
-        Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "Welcome to PropShop CRM",
+                style = MaterialTheme.typography.titleMedium
+            )
 
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("Password") },
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth()
-        )
+            Spacer(modifier = Modifier.height(32.dp))
 
-        Spacer(modifier = Modifier.height(24.dp))
+            // 👤 USERNAME
+            OutlinedTextField(
+                value = username,
+                onValueChange = { username = it },
+                label = { Text("Username") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
 
-        Button(
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !loading,
-            onClick = {
+            Spacer(modifier = Modifier.height(12.dp))
 
-                if (username.isBlank() || password.isBlank()) {
-                    Toast.makeText(context, "Enter credentials", Toast.LENGTH_SHORT).show()
-                    return@Button
-                }
+            // 🔐 PASSWORD
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text("Password") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
 
-                loading = true
+            Spacer(modifier = Modifier.height(24.dp))
 
-                AuthApiClient.api
-                    .login(LoginRequest(username, password))
-                    .enqueue(object : Callback<LoginResponse> {
+            // 🔘 LOGIN BUTTON
+            Button(
+                enabled = !loading,
+                onClick = {
+                    if (username.isBlank() || password.isBlank()) {
+                        Toast.makeText(
+                            context,
+                            "Enter username and password",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        return@Button
+                    }
+
+                    loading = true
+
+                    // 🔥 CALL LOGIN API
+                    AuthApiClient.api.login(
+                        LoginRequest(username, password)
+                    ).enqueue(object : Callback<LoginResponse> {
 
                         override fun onResponse(
                             call: Call<LoginResponse>,
@@ -71,21 +107,48 @@ fun LoginScreen(
                             loading = false
 
                             if (response.isSuccessful && response.body() != null) {
-                                val data = response.body()!!
-                                onSuccess(data.token, data.user.id)
+
+                                val body = response.body()!!
+
+                                val token = body.token
+                                val role = body.user.role
+                                val employeeId = body.user.id.toString()
+
+                                onLoginSuccess(token, role, employeeId)
+
                             } else {
-                                Toast.makeText(context, "Login failed", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(
+                                    context,
+                                    "Invalid credentials",
+                                    Toast.LENGTH_SHORT
+                                ).show()
                             }
                         }
 
                         override fun onFailure(call: Call<LoginResponse>, t: Throwable) {
                             loading = false
-                            Toast.makeText(context, t.message, Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                context,
+                                "Login failed: ${t.message}",
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
                     })
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp)
+            ) {
+                Text(if (loading) "Logging in..." else "Login")
             }
-        ) {
-            Text(if (loading) "Logging in..." else "Login")
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Text(
+                text = "© PropShop Technologies",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

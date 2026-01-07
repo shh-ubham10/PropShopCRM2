@@ -2,7 +2,9 @@ package com.propshop.crm
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.work.*
+import retrofit2.HttpException
 import java.util.concurrent.TimeUnit
 
 class CallUploadWorker(
@@ -12,18 +14,50 @@ class CallUploadWorker(
 
     override suspend fun doWork(): Result {
 
-        val fileUri = inputData.getString("fileUri") ?: return Result.failure()
-        val metadata = inputData.getString("metadata") ?: return Result.failure()
+        val fileUriStr = inputData.getString("fileUri")
+        val metadata = inputData.getString("metadata")
+
+        if (fileUriStr.isNullOrEmpty() || metadata.isNullOrEmpty()) {
+            Log.e("CRM_UPLOAD", "Invalid input data")
+            return Result.failure()
+        }
+
+        val fileUri = Uri.parse(fileUriStr)
+
+        Log.d("CRM_UPLOAD", "Worker started")
+        Log.d("CRM_UPLOAD", "FileUri = $fileUri")
+        Log.d("CRM_UPLOAD", "Metadata = $metadata")
+
+        // Ensure retrofit + auth ready
+        AuthApiClient.init(applicationContext)
 
         return try {
-            CallUploadManager.uploadCall(
+
+            val response = CallUploadManager.uploadCall(
                 context = applicationContext,
-                fileUri = Uri.parse(fileUri),
+                fileUri = fileUri,
                 metadataJson = metadata
             )
+
+            Log.d("CRM_UPLOAD", "Upload success: $response")
+
             Result.success()
+
+        } catch (e: HttpException) {
+
+            Log.e(
+                "CRM_UPLOAD",
+                "HTTP error ${e.code()} : ${e.response()?.errorBody()?.string()}",
+                e
+            )
+
+            // Retry only for server/network errors
+            if (e.code() >= 500) Result.retry() else Result.failure()
+
         } catch (e: Exception) {
-            Result.retry() // 🔁 auto retry
+
+            Log.e("CRM_UPLOAD", "Upload failed", e)
+            Result.retry()
         }
     }
 
@@ -52,6 +86,7 @@ class CallUploadWorker(
                     30,
                     TimeUnit.SECONDS
                 )
+                .addTag("CALL_UPLOAD")
                 .build()
 
             WorkManager.getInstance(context).enqueue(request)

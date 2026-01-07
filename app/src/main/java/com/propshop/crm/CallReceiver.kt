@@ -3,18 +3,23 @@ package com.propshop.crm
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.telephony.TelephonyManager
+import android.util.Log
+import android.widget.Toast
 import androidx.core.content.ContextCompat
 import java.io.File
 
 class CallReceiver : BroadcastReceiver() {
 
-    private var callStartTime: Long = 0
+    private var callStartTime: Long = 0L
     private var savedNumber: String = ""
-    private var wasInCall = false
 
     override fun onReceive(context: Context, intent: Intent) {
+
+        Toast.makeText(context, "CALL EVENT RECEIVED", Toast.LENGTH_SHORT).show()
+        Log.d("CRM_CALL", "Broadcast received")
 
         if (intent.action != TelephonyManager.ACTION_PHONE_STATE_CHANGED) return
 
@@ -22,48 +27,73 @@ class CallReceiver : BroadcastReceiver() {
         val incomingNumber =
             intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER) ?: ""
 
+        Log.d("CRM_CALL", "Call state = $stateStr")
+
+        val prefs = context.getSharedPreferences("call_state", Context.MODE_PRIVATE)
+
         when (stateStr) {
 
+            /* ---------------- RINGING ---------------- */
             TelephonyManager.EXTRA_STATE_RINGING -> {
                 savedNumber = incomingNumber
+                Log.d("CRM_CALL", "RINGING from $savedNumber")
             }
 
+            /* ---------------- OFFHOOK ---------------- */
             TelephonyManager.EXTRA_STATE_OFFHOOK -> {
 
-                wasInCall = true
-                callStartTime = System.currentTimeMillis()
+                if (!prefs.getBoolean("call_active", false)) {
+                    prefs.edit()
+                        .putBoolean("call_active", true)
+                        .putLong("call_start", System.currentTimeMillis())
+                        .apply()
+
+                    callStartTime = prefs.getLong("call_start", System.currentTimeMillis())
+                }
 
                 if (savedNumber.isEmpty()) {
                     savedNumber = incomingNumber.ifEmpty { "Unknown" }
                 }
 
-                // ▶️ Start call recording
-                val startIntent =
-                    Intent(context, CallRecordingService::class.java).apply {
-                        putExtra("action", "start")
-                        putExtra("number", savedNumber)
-                        putExtra("time", callStartTime.toString())
-                    }
+                // 🔐 PERSISTENT GUARD (FINAL)
+                if (!prefs.getBoolean("recording_started", false)) {
 
-                ContextCompat.startForegroundService(context, startIntent)
+                    prefs.edit().putBoolean("recording_started", true).apply()
+
+                    Log.d("CRM_CALL", "OFFHOOK - starting recording")
+
+                    val startIntent =
+                        Intent(context, CallRecordingService::class.java).apply {
+                            putExtra("action", "start")
+                            putExtra("number", savedNumber)
+                            putExtra("time", callStartTime.toString())
+                        }
+
+                    ContextCompat.startForegroundService(context, startIntent)
+
+                } else {
+                    Log.d("CRM_CALL", "OFFHOOK ignored - recording already started")
+                }
             }
 
+            /* ---------------- IDLE ---------------- */
             TelephonyManager.EXTRA_STATE_IDLE -> {
 
-                if (!wasInCall) return
-                wasInCall = false
+                if (!prefs.getBoolean("call_active", false)) return
 
-                // ⏹ Stop recording
-                val stopIntent =
-                    Intent(context, CallRecordingService::class.java).apply {
-                        putExtra("action", "stop")
-                    }
+                Log.d("CRM_CALL", "IDLE - call ended")
 
-                ContextCompat.startForegroundService(context, stopIntent)
+                context.startService(
+                    Intent(context, CallRecordingService::class.java)
+                        .putExtra("action", "stop")
+                )
 
-                // ☁️ Auto upload last call
-                uploadLastRecordedCall(context)
+                Handler(Looper.getMainLooper()).postDelayed({
+                    uploadLastRecordedCall(context)
+                }, 800)
 
+                // 🔁 CLEAR PERSISTENT STATE
+                prefs.edit().clear().apply()
                 savedNumber = ""
             }
         }
@@ -73,41 +103,54 @@ class CallReceiver : BroadcastReceiver() {
 
     private fun uploadLastRecordedCall(context: Context) {
 
+        Log.d("CRM_UPLOAD", "uploadLastRecordedCall() triggered")
+
         val session = SessionManager(context)
-        if (!session.isLoggedIn()) return
+        if (!session.isLoggedIn()) {
+            Log.d("CRM_UPLOAD", "User not logged in, upload skipped")
+            return
+        }
 
-        val filePath = getLastRecordedCallPath()
-        if (filePath.isEmpty()) return
+        val prefs = context.getSharedPreferences("call_rec", Context.MODE_PRIVATE)
+        val filePath = prefs.getString("last_file_path", "") ?: ""
 
-        val fileUri = android.net.Uri.fromFile(File(filePath))
+        if (filePath.isEmpty()) {
+            Log.d("CRM_UPLOAD", "No recording file path saved")
+            return
+        }
 
-        val metadata = """
-            {
-              "employeeId": ${session.getUserId()},
-              "phoneNumber": "$savedNumber",
-              "startTime": $callStartTime,
-              "endTime": ${System.currentTimeMillis()},
-              "callType": "outgoing"
-            }
-        """.trimIndent()
+        val file = File(filePath)
+        if (!file.exists()) {
+            Log.d("CRM_UPLOAD", "Recording file does not exist")
+            return
+        }
+
+        // 🔑 REQUIRED VALUES
+        val phone = if (savedNumber.isNotEmpty()) savedNumber else "UNKNOWN"
+        val endMs = System.currentTimeMillis()
+        val durationSeconds = ((endMs - callStartTime) / 1000).toInt()
+        val employeeId = session.getEmployeeId() // MUST exist in SessionManager
+        val audioFileName = file.name
+
+        Log.d(
+            "CRM_UPLOAD",
+            "Uploading call employee=$employeeId phone=$phone duration=$durationSeconds"
+        )
 
         CallUploadWorker.enqueue(
             context = context,
-            fileUri = fileUri,
-            metadataJson = metadata
+            fileUri = android.net.Uri.fromFile(file),
+            metadataJson = """
+            {
+              "employee_id": "$employeeId",
+              "phone_number": "$phone",
+              "call_type": "outgoing",
+              "start_ms": $callStartTime,
+              "end_ms": $endMs,
+              "duration_seconds": $durationSeconds,
+              "audio_file": "$audioFileName"
+            }
+        """.trimIndent()
         )
-    }
-
-    private fun getLastRecordedCallPath(): String {
-
-        val dir = File(
-            Environment.getExternalStorageDirectory(),
-            "CallRecordings"
-        )
-
-        return dir.listFiles()
-            ?.maxByOrNull { it.lastModified() }
-            ?.absolutePath
-            ?: ""
     }
 }

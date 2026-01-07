@@ -22,8 +22,14 @@ class LoginActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            LoginScreen { token, userId ->
-                SessionManager(this).saveLogin(token, userId)
+            LoginScreen { token, role, employeeId ->
+
+                // ✅ SAVE LOGIN PROPERLY
+                SessionManager(this).saveLogin(
+                    token = token,
+                    role = role,
+                    employeeId = employeeId
+                )
 
                 startActivity(
                     Intent(this, MainActivity::class.java)

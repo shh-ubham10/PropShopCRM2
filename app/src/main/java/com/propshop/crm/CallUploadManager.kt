@@ -5,12 +5,11 @@ import android.net.Uri
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
-import retrofit2.Call
-import retrofit2.Callback
-import retrofit2.Response
+import retrofit2.HttpException
 
 object CallUploadManager {
 
+    @Throws(Exception::class)
     fun uploadCall(
         context: Context,
         fileUri: Uri,
@@ -18,7 +17,7 @@ object CallUploadManager {
     ) {
 
         val inputStream = context.contentResolver.openInputStream(fileUri)
-            ?: return
+            ?: throw Exception("Audio file not found")
 
         val fileBytes = inputStream.readBytes()
 
@@ -38,19 +37,13 @@ object CallUploadManager {
             metadataJson
         )
 
-        AuthApiClient.api.uploadCall(filePart, metadata)
-            .enqueue(object : Callback<Unit> {
+        // 🔴 BLOCKING CALL — THIS IS THE FIX
+        val response = AuthApiClient.api
+            .uploadCall(filePart, metadata)
+            .execute()
 
-                override fun onResponse(
-                    call: Call<Unit>,
-                    response: Response<Unit>
-                ) {
-                    // success → backend has it
-                }
-
-                override fun onFailure(call: Call<Unit>, t: Throwable) {
-                    // retry logic later
-                }
-            })
+        if (!response.isSuccessful) {
+            throw HttpException(response)
+        }
     }
 }

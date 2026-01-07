@@ -8,7 +8,7 @@ import org.json.JSONObject
 
 object ApiClient {
 
-    private const val BASE_URL = "https://your-propshop-crm.com/api/call/report"
+    const val BASE_URL = "https://propshop-crm-backend.onrender.com/"
 
     fun sendCallData(payload: JSONObject) {
         try {

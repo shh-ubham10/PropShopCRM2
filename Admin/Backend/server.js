@@ -1,18 +1,27 @@
 // server.js
-const authMiddleware = require("./auth");
-const pool = require("./db");
+require("dotenv").config();
+
 const express = require("express");
+const cors = require("cors");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt"); // IMPORTANT: must match hash generation
 const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
-const cors = require("cors");
-const jwt = require("jsonwebtoken");
-const bcrypt = require("bcrypt");
-require("dotenv").config();
+
+const authMiddleware = require("./auth");
+const pool = require("./db");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+/* ============================
+   BASIC HEALTH CHECK
+============================ */
+app.get("/", (_, res) => {
+  res.send("PropShop CRM Backend is running");
+});
 
 /* ============================
    UPLOAD SETUP
@@ -24,27 +33,38 @@ const storage = multer.diskStorage({
   destination: (_, __, cb) => cb(null, UPLOAD_DIR),
   filename: (_, file, cb) => cb(null, Date.now() + "_" + file.originalname),
 });
- const upload = multer({ storage });
+const upload = multer({ storage });
 
 /* ============================
-   LOGIN
+   LOGIN (DEBUG ENABLED)
 ============================ */
 app.post("/api/login", async (req, res) => {
   try {
     const { username, password } = req.body;
+
+    console.log("LOGIN ATTEMPT:", username);
 
     const result = await pool.query(
       "SELECT id, username, password_hash, role FROM users WHERE username=$1",
       [username]
     );
 
-    if (!result.rows.length)
+    console.log("DB RESULT:", result.rows);
+
+    if (!result.rows.length) {
+      console.log("LOGIN FAIL: USER NOT FOUND");
       return res.status(401).json({ error: "Invalid credentials" });
+    }
 
     const user = result.rows[0];
+
     const match = await bcrypt.compare(password, user.password_hash);
-    if (!match)
+    console.log("PASSWORD MATCH:", match);
+
+    if (!match) {
+      console.log("LOGIN FAIL: PASSWORD MISMATCH");
       return res.status(401).json({ error: "Invalid credentials" });
+    }
 
     const token = jwt.sign(
       { id: user.id, role: user.role },
@@ -52,9 +72,14 @@ app.post("/api/login", async (req, res) => {
       { expiresIn: "12h" }
     );
 
+    console.log("LOGIN SUCCESS:", username);
+
     res.json({
       token,
-      user: { id: user.id, role: user.role },
+      user: {
+        id: user.id,
+        role: user.role,
+      },
     });
   } catch (err) {
     console.error("LOGIN ERROR:", err);
@@ -63,81 +88,91 @@ app.post("/api/login", async (req, res) => {
 });
 
 /* ============================
-   CREATE USER (ADMIN)
+   CREATE USER (ADMIN ONLY)
 ============================ */
 app.post("/api/users", authMiddleware, async (req, res) => {
-  if (req.user.role !== "admin")
-    return res.status(403).json({ error: "forbidden" });
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ error: "forbidden" });
+    }
 
-  const { username, password, role } = req.body;
+    const { username, password, role } = req.body;
 
-  const exists = await pool.query(
-    "SELECT id FROM users WHERE username=$1",
-    [username]
-  );
-  if (exists.rows.length)
-    return res.status(400).json({ error: "exists" });
+    const exists = await pool.query(
+      "SELECT id FROM users WHERE username=$1",
+      [username]
+    );
+    if (exists.rows.length) {
+      return res.status(400).json({ error: "exists" });
+    }
 
-  const hash = await bcrypt.hash(password, 10);
+    const hash = await bcrypt.hash(password, 10);
 
-  await pool.query(
-    "INSERT INTO users (username, password_hash, role) VALUES ($1,$2,$3)",
-    [username, hash, role || "employee"]
-  );
+    await pool.query(
+      "INSERT INTO users (username, password_hash, role) VALUES ($1,$2,$3)",
+      [username, hash, role || "employee"]
+    );
 
-  res.json({ ok: true });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("CREATE USER ERROR:", err);
+    res.status(500).json({ error: "user create failed" });
+  }
 });
 
 /* ============================
    UPLOAD CALL
 ============================ */
-app.post("/api/calls/upload", upload.single("audio"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: "audio file missing" });
-    }
+app.post(
+  "/api/calls/upload",
+  authMiddleware,
+  upload.single("audio"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "audio file missing" });
+      }
 
-    const meta = JSON.parse(req.body.metadata || "{}");
+      const meta = JSON.parse(req.body.metadata || "{}");
 
-    const {
-      employee_id,
-      phone_number,
-      call_type,
-      start_ms,
-      end_ms,
-      duration_seconds,
-    } = meta;
-
-    if (!employee_id || !start_ms) {
-      return res.status(400).json({ error: "invalid metadata" });
-    }
-
-    await pool.query(
-      `INSERT INTO calls
-       (employee_id, phone_number, call_type, start_ms, end_ms,
-        duration_seconds, audio_file)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [
+      const {
         employee_id,
-        phone_number || "UNKNOWN",
-        call_type || "outgoing",
+        phone_number,
+        call_type,
         start_ms,
-        end_ms || null,
-        duration_seconds || 0,
-        req.file.filename,
-      ]
-    );
+        end_ms,
+        duration_seconds,
+      } = meta;
 
-    res.json({ ok: true });
-  } catch (err) {
-    console.error("UPLOAD ERROR:", err);
-    res.status(500).json({ error: "upload failed" });
+      if (!employee_id || !start_ms) {
+        return res.status(400).json({ error: "invalid metadata" });
+      }
+
+      await pool.query(
+        `INSERT INTO calls
+         (employee_id, phone_number, call_type, start_ms, end_ms, duration_seconds, audio_file)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [
+          employee_id,
+          phone_number || "UNKNOWN",
+          call_type || "outgoing",
+          start_ms,
+          end_ms || null,
+          duration_seconds || 0,
+          req.file.filename,
+        ]
+      );
+
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("UPLOAD ERROR:", err);
+      res.status(500).json({ error: "upload failed" });
+    }
   }
-});
-
+);
 
 /* ============================
-   FETCH CALLS (ROLE BASED)
+   FETCH CALLS
 ============================ */
 app.get("/api/calls", authMiddleware, async (req, res) => {
   try {
@@ -157,17 +192,15 @@ app.get("/api/calls", authMiddleware, async (req, res) => {
 });
 
 /* ============================
-   DASHBOARD SUMMARY (ADMIN)
+   SUMMARY (ADMIN)
 ============================ */
 app.get("/api/summary", authMiddleware, async (req, res) => {
-  if (req.user.role !== "admin")
+  if (req.user.role !== "admin") {
     return res.status(403).json({ error: "forbidden" });
+  }
 
   try {
     const total = await pool.query("SELECT COUNT(*) FROM calls");
-    const incoming = await pool.query(
-      "SELECT COUNT(*) FROM calls WHERE call_type='incoming'"
-    );
     const outgoing = await pool.query(
       "SELECT COUNT(*) FROM calls WHERE call_type='outgoing'"
     );
@@ -175,23 +208,10 @@ app.get("/api/summary", authMiddleware, async (req, res) => {
       "SELECT COALESCE(SUM(duration_seconds),0) AS total FROM calls"
     );
 
-    const byEmployeeRaw = await pool.query(`
-      SELECT employee_id, COUNT(*) AS count
-      FROM calls
-      GROUP BY employee_id
-    `);
-
-    const byEmployee = {};
-    byEmployeeRaw.rows.forEach(r => {
-      byEmployee[r.employee_id] = Number(r.count);
-    });
-
     res.json({
       total: Number(total.rows[0].count),
-      incoming: Number(incoming.rows[0].count),
       outgoing: Number(outgoing.rows[0].count),
       totalDuration: Number(duration.rows[0].total) / 60,
-      byEmployee,
     });
   } catch (err) {
     console.error("SUMMARY ERROR:", err);
@@ -200,29 +220,7 @@ app.get("/api/summary", authMiddleware, async (req, res) => {
 });
 
 /* ============================
-   TODAY CALL COUNT (EMPLOYEE)
-============================ */
-app.get("/api/today-calls", authMiddleware, async (req, res) => {
-  try {
-    const result = await pool.query(
-      `
-      SELECT COUNT(*) 
-      FROM calls
-      WHERE employee_id = $1
-        AND DATE(to_timestamp(start_ms / 1000)) = CURRENT_DATE
-      `,
-      [req.user.id]
-    );
-
-    res.json({ todayCalls: Number(result.rows[0].count) });
-  } catch (err) {
-    console.error("TODAY CALLS ERROR:", err);
-    res.status(500).json({ error: "today calls failed" });
-  }
-});
-
-/* ============================
-   SERVE AUDIO FILE (SECURE)
+   SERVE AUDIO FILE
 ============================ */
 app.get("/files/:name", authMiddleware, async (req, res) => {
   try {
@@ -252,8 +250,7 @@ app.get("/files/:name", authMiddleware, async (req, res) => {
 /* ============================
    START SERVER
 ============================ */
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
 });
-

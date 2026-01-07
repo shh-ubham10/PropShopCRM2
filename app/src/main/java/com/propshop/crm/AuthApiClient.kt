@@ -7,14 +7,16 @@ import retrofit2.converter.gson.GsonConverterFactory
 
 object AuthApiClient {
 
-    private const val BASE_URL = "http://192.168.0.138:5000/"
+    const val BASE_URL = "https://propshop-crm-backend.onrender.com/"
 
+
+    // 🔒 Retrofit stays PRIVATE
     private lateinit var retrofit: Retrofit
 
     fun init(context: Context) {
 
         val client = OkHttpClient.Builder()
-            .addInterceptor(AuthInterceptor(context))
+            .addInterceptor(AuthInterceptor(context)) // injects token
             .build()
 
         retrofit = Retrofit.Builder()
@@ -24,6 +26,7 @@ object AuthApiClient {
             .build()
     }
 
+    // ✅ THIS is what UI should use
     val api: ApiService by lazy {
         retrofit.create(ApiService::class.java)
     }
