@@ -3,17 +3,21 @@ package com.propshop.crm
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.telephony.TelephonyManager
 import android.util.Log
 import android.widget.Toast
 import androidx.core.content.ContextCompat
+import org.json.JSONObject
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class CallReceiver : BroadcastReceiver() {
 
-    private var callStartTime: Long = 0L
     private var savedNumber: String = ""
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -27,9 +31,10 @@ class CallReceiver : BroadcastReceiver() {
         val incomingNumber =
             intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER) ?: ""
 
-        Log.d("CRM_CALL", "Call state = $stateStr")
+        val statePrefs = context.getSharedPreferences("call_state", Context.MODE_PRIVATE)
+        val recPrefs = context.getSharedPreferences("call_rec", Context.MODE_PRIVATE)
 
-        val prefs = context.getSharedPreferences("call_state", Context.MODE_PRIVATE)
+        Log.d("CRM_CALL", "Call state = $stateStr")
 
         when (stateStr) {
 
@@ -42,23 +47,31 @@ class CallReceiver : BroadcastReceiver() {
             /* ---------------- OFFHOOK ---------------- */
             TelephonyManager.EXTRA_STATE_OFFHOOK -> {
 
-                if (!prefs.getBoolean("call_active", false)) {
-                    prefs.edit()
+                if (!statePrefs.getBoolean("call_active", false)) {
+
+                    val startTime = System.currentTimeMillis()
+
+                    statePrefs.edit()
                         .putBoolean("call_active", true)
-                        .putLong("call_start", System.currentTimeMillis())
+                        .putBoolean("recording_started", false)
                         .apply()
 
-                    callStartTime = prefs.getLong("call_start", System.currentTimeMillis())
+                    recPrefs.edit()
+                        .putLong("call_start_time", startTime)
+                        .apply()
+
+                    Log.d("CRM_CALL", "Call start time saved = $startTime")
                 }
 
                 if (savedNumber.isEmpty()) {
-                    savedNumber = incomingNumber.ifEmpty { "Unknown" }
+                    savedNumber = incomingNumber.ifEmpty { "UNKNOWN" }
                 }
 
-                // 🔐 PERSISTENT GUARD (FINAL)
-                if (!prefs.getBoolean("recording_started", false)) {
+                if (!statePrefs.getBoolean("recording_started", false)) {
 
-                    prefs.edit().putBoolean("recording_started", true).apply()
+                    statePrefs.edit()
+                        .putBoolean("recording_started", true)
+                        .apply()
 
                     Log.d("CRM_CALL", "OFFHOOK - starting recording")
 
@@ -66,91 +79,97 @@ class CallReceiver : BroadcastReceiver() {
                         Intent(context, CallRecordingService::class.java).apply {
                             putExtra("action", "start")
                             putExtra("number", savedNumber)
-                            putExtra("time", callStartTime.toString())
                         }
 
                     ContextCompat.startForegroundService(context, startIntent)
-
-                } else {
-                    Log.d("CRM_CALL", "OFFHOOK ignored - recording already started")
                 }
             }
 
             /* ---------------- IDLE ---------------- */
             TelephonyManager.EXTRA_STATE_IDLE -> {
 
-                if (!prefs.getBoolean("call_active", false)) return
+                if (!statePrefs.getBoolean("call_active", false)) return
 
                 Log.d("CRM_CALL", "IDLE - call ended")
 
+                // Stop recording
                 context.startService(
                     Intent(context, CallRecordingService::class.java)
                         .putExtra("action", "stop")
                 )
 
+                // Upload after short delay
                 Handler(Looper.getMainLooper()).postDelayed({
                     uploadLastRecordedCall(context)
                 }, 800)
 
-                // 🔁 CLEAR PERSISTENT STATE
-                prefs.edit().clear().apply()
+                // Clear state
+                statePrefs.edit().clear().apply()
                 savedNumber = ""
             }
         }
     }
 
-    /* ---------------- AUTO UPLOAD ---------------- */
+    /* ================= CALL UPLOAD ================= */
 
     private fun uploadLastRecordedCall(context: Context) {
 
         Log.d("CRM_UPLOAD", "uploadLastRecordedCall() triggered")
 
         val session = SessionManager(context)
-        if (!session.isLoggedIn()) {
-            Log.d("CRM_UPLOAD", "User not logged in, upload skipped")
-            return
-        }
+        if (!session.isLoggedIn()) return
 
-        val prefs = context.getSharedPreferences("call_rec", Context.MODE_PRIVATE)
-        val filePath = prefs.getString("last_file_path", "") ?: ""
-
-        if (filePath.isEmpty()) {
-            Log.d("CRM_UPLOAD", "No recording file path saved")
-            return
-        }
+        val recPrefs = context.getSharedPreferences("call_rec", Context.MODE_PRIVATE)
+        val filePath = recPrefs.getString("last_file_path", "") ?: return
 
         val file = File(filePath)
-        if (!file.exists()) {
-            Log.d("CRM_UPLOAD", "Recording file does not exist")
-            return
-        }
+        if (!file.exists()) return
 
-        // 🔑 REQUIRED VALUES
-        val phone = if (savedNumber.isNotEmpty()) savedNumber else "UNKNOWN"
+        val startMs = recPrefs.getLong("call_start_time", 0L)
         val endMs = System.currentTimeMillis()
-        val durationSeconds = ((endMs - callStartTime) / 1000).toInt()
-        val employeeId = session.getEmployeeId() // MUST exist in SessionManager
-        val audioFileName = file.name
 
-        Log.d(
-            "CRM_UPLOAD",
-            "Uploading call employee=$employeeId phone=$phone duration=$durationSeconds"
-        )
+        val actualStart = if (startMs > 0) startMs else endMs
+        val durationSeconds = ((endMs - actualStart) / 1000).coerceAtLeast(1)
 
-        CallUploadWorker.enqueue(
-            context = context,
-            fileUri = android.net.Uri.fromFile(file),
-            metadataJson = """
-            {
-              "employee_id": "$employeeId",
-              "phone_number": "$phone",
-              "call_type": "outgoing",
-              "start_ms": $callStartTime,
-              "end_ms": $endMs,
-              "duration_seconds": $durationSeconds,
-              "audio_file": "$audioFileName"
-            }
-        """.trimIndent()
-        )
+        val phone = if (savedNumber.isNotEmpty()) savedNumber else "UNKNOWN"
+        val employeeId = session.getEmployeeId()
+
+        // 🔥 GET LOCATION AND EMBED INTO METADATA
+        LocationHelper.getCurrentLocation(context) { location ->
+
+            val metadataJson = JSONObject().apply {
+                put("employee_id", employeeId)
+                put("phone_number", phone)
+                put("call_type", "outgoing")
+                put("start_ms", actualStart)
+                put("end_ms", endMs)
+                put("duration_seconds", durationSeconds)
+                put("audio_file", file.name)
+
+                if (location != null) {
+                    put(
+                        "location",
+                        JSONObject().apply {
+                            put("latitude", location.latitude)
+                            put("longitude", location.longitude)
+                            put("timestamp", getIsoTime())
+                        }
+                    )
+                }
+            }.toString()
+
+            CallUploadWorker.enqueue(
+                context = context,
+                fileUri = Uri.fromFile(file),
+                metadataJson = metadataJson
+            )
+        }
+    }
+
+    private fun getIsoTime(): String {
+        return SimpleDateFormat(
+            "yyyy-MM-dd'T'HH:mm:ss",
+            Locale.getDefault()
+        ).format(Date())
     }
 }

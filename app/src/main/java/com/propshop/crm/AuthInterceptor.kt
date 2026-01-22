@@ -7,18 +7,24 @@ import okhttp3.Response
 class AuthInterceptor(private val context: Context) : Interceptor {
 
     override fun intercept(chain: Interceptor.Chain): Response {
-        val session = SessionManager(context)
-        val token = session.getToken()
 
-        val request = if (token != null) {
-            chain.request().newBuilder()
-                .addHeader("Authorization", "Bearer $token")
-                .build()
-        } else {
-            chain.request()
+        val request = chain.request()
+
+        val isPublicApi = request.url.encodedPath.contains("/login") ||
+                request.url.encodedPath.contains("/register") ||
+                request.url.encodedPath.contains("/forgot-password")
+
+        if (isPublicApi) {
+            return chain.proceed(request)
         }
 
-        return chain.proceed(request)
+        val token = SessionManager(context).getToken()
+
+        val newRequest = request.newBuilder()
+            .addHeader("Authorization", "Bearer $token")
+            .build()
+
+        return chain.proceed(newRequest)
     }
 }
 

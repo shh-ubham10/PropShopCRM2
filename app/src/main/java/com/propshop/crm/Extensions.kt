@@ -1,6 +1,8 @@
 package com.propshop.crm
 
-import android.content.res.Resources
+import android.content.Context
+import android.widget.Toast
 
-val Int.dp: Int
-    get() = (this * Resources.getSystem().displayMetrics.density).toInt()
+fun Context.toast(message: String) {
+    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+}

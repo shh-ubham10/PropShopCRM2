@@ -1,8 +1,18 @@
 "use client"
-
 import { useEffect, useState } from "react"
 import api from "../api"
-import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts"
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from "recharts"
 import AudioModal from "../components/AudioModal"
 import "../styles/professional-dashboard.css"
 
@@ -29,8 +39,20 @@ export default function Calls() {
       const query = { page, limit, ...filters, ...params }
       const res = await api.get("/api/calls", { params: query })
       const data = res.data
-      const rows = data.calls || data
+
+      const rows = (data.calls || data).map((c) => ({
+        id: c._id,
+        callType: c.call_type,
+        employeeId: c.employee_id?.username || c.employee_id?._id || "—",
+        phoneNumber: c.phone_number,
+        startMs: c.start_ms,
+        endMs: c.end_ms,
+        filename: c.audio_file,
+        location: c.location || null, // ✅ LOCATION MAPPED
+      }))
+
       setCalls(rows)
+
       if (data.total) setTotalPages(Math.ceil(data.total / limit))
       else setTotalPages(1)
     } catch (e) {
@@ -56,7 +78,9 @@ export default function Calls() {
   }
 
   function doExport() {
-    const base = process.env.REACT_APP_API_BASE || "http://localhost:5000"
+    const base =
+      process.env.REACT_APP_API_BASE ||
+      "https://record-call.onrender.com"
     window.open(base + "/api/export", "_blank")
   }
 
@@ -260,7 +284,7 @@ export default function Calls() {
         </div>
       </div>
 
-      <div className="chart-card">
+       <div className="chart-card">
         <h3 className="chart-title">Call Records</h3>
         <div className="table-container">
           <table style={{ fontSize: "12px" }}>
@@ -271,13 +295,14 @@ export default function Calls() {
                 <th>Type</th>
                 <th>Start Time</th>
                 <th>Duration</th>
+                <th>Location</th>
                 <th>Audio</th>
               </tr>
             </thead>
             <tbody>
               {calls.length === 0 && (
                 <tr>
-                  <td colSpan="6" style={{ textAlign: "center", padding: "20px" }}>
+                  <td colSpan="7" style={{ textAlign: "center", padding: "20px" }}>
                     No calls found
                   </td>
                 </tr>
@@ -286,19 +311,57 @@ export default function Calls() {
               {calls.map((c) => (
                 <tr key={c.id}>
                   <td>{c.employeeId}</td>
+
                   <td>
                     <code style={{ fontSize: "11px" }}>{c.phoneNumber}</code>
                   </td>
+
                   <td>
                     <span
-                      className={`badge ${c.callType === "incoming" ? "badge-info" : "badge-success"}`}
+                      className={`badge ${
+                        c.callType === "incoming"
+                          ? "badge-info"
+                          : "badge-success"
+                      }`}
                       style={{ fontSize: "10px" }}
                     >
                       {c.callType}
                     </span>
                   </td>
-                  <td style={{ fontSize: "11px" }}>{c.startMs ? new Date(Number(c.startMs)).toLocaleString() : "-"}</td>
-                  <td>{Math.floor((Number(c.endMs || 0) - Number(c.startMs || 0)) / 1000)}s</td>
+
+                  <td style={{ fontSize: "11px" }}>
+                    {c.startMs
+                      ? new Date(Number(c.startMs)).toLocaleString()
+                      : "-"}
+                  </td>
+
+                  <td>
+                    {Math.floor(
+                      (Number(c.endMs || 0) - Number(c.startMs || 0)) / 1000
+                    )}
+                    s
+                  </td>
+
+                  {/* ✅ LOCATION COLUMN */}
+                  <td style={{ fontSize: "11px" }}>
+                    {c.location?.latitude && c.location?.longitude ? (
+                      <a
+                        href={`https://www.google.com/maps?q=${c.location.latitude},${c.location.longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          color: "#2563eb",
+                          fontWeight: 600,
+                          textDecoration: "underline",
+                        }}
+                      >
+                        Location
+                      </a>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+
                   <td>
                     {c.filename ? (
                       <button
@@ -313,12 +376,19 @@ export default function Calls() {
                         }}
                         onClick={() =>
                           setOpenAudio({
-                            src: `${process.env.REACT_APP_API_BASE || "http://localhost:5000"}/files/${c.filename}`,
+                            src: `${
+                              process.env.REACT_APP_API_BASE ||
+                              "https://record-call.onrender.com"
+                            }/uploads/${c.filename}`,
                             filename: c.filename,
                             meta: {
                               employeeId: c.employeeId,
                               phoneNumber: c.phoneNumber,
-                              when: c.startMs ? new Date(Number(c.startMs)).toLocaleString() : "",
+                              when: c.startMs
+                                ? new Date(
+                                    Number(c.startMs)
+                                  ).toLocaleString()
+                                : "",
                             },
                           })
                         }

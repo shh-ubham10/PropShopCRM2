@@ -2,10 +2,14 @@ package com.propshop.crm
 
 import android.content.Context
 import android.net.Uri
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import android.util.Log
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
-import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import retrofit2.HttpException
+import java.io.File
+import java.io.FileOutputStream
 
 object CallUploadManager {
 
@@ -19,27 +23,37 @@ object CallUploadManager {
         val inputStream = context.contentResolver.openInputStream(fileUri)
             ?: throw Exception("Audio file not found")
 
-        val fileBytes = inputStream.readBytes()
-
-        val requestFile = RequestBody.create(
-            "audio/*".toMediaTypeOrNull(),
-            fileBytes
+        val tempFile = File.createTempFile(
+            "call_upload_",
+            ".m4a",
+            context.cacheDir
         )
 
-        val filePart = MultipartBody.Part.createFormData(
-            "file",
-            "call_recording.mp3",
-            requestFile
+        FileOutputStream(tempFile).use { output ->
+            inputStream.use { input ->
+                input.copyTo(output)
+            }
+        }
+
+        // ✅ FIXED: File → asRequestBody
+        val audioRequestBody = tempFile
+            .asRequestBody("audio/m4a".toMediaType())
+
+        val audioPart = MultipartBody.Part.createFormData(
+            name = "audio_file",
+            filename = tempFile.name,
+            body = audioRequestBody
         )
 
-        val metadata = RequestBody.create(
-            "application/json".toMediaTypeOrNull(),
-            metadataJson
-        )
+        // ✅ String → toRequestBody
+        val metadataPart = metadataJson
+            .toRequestBody("application/json".toMediaType())
 
-        // 🔴 BLOCKING CALL — THIS IS THE FIX
+//        Log.d("CRM_UPLOAD", "Metadata = $metadataPart")
+        Log.d("CRM_UPLOAD", "Metadata JSON = $metadataJson")
+
         val response = AuthApiClient.api
-            .uploadCall(filePart, metadata)
+            .uploadCall(audioPart, metadataPart)
             .execute()
 
         if (!response.isSuccessful) {
@@ -47,3 +61,4 @@ object CallUploadManager {
         }
     }
 }
+

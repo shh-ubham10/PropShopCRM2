@@ -1,6 +1,8 @@
 package com.propshop.crm
 
+import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -13,13 +15,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // ✅ Init token interceptor ONCE
+        Log.d("MAIN", "MainActivity started")
+
+        // ✅ Init Retrofit + Auth Interceptor ONCE
         AuthApiClient.init(this)
 
         setContent {
 
             val session = remember { SessionManager(this) }
-
             var isLoggedIn by remember {
                 mutableStateOf(session.isLoggedIn())
             }
@@ -28,25 +31,52 @@ class MainActivity : ComponentActivity() {
 
                 if (!isLoggedIn) {
 
-                    // ✅ FIXED: accept 3 parameters
-                    LoginScreen { token, role, employeeId ->
+                    Log.d("MAIN", "User NOT logged in → showing LoginScreen")
 
-                        session.saveLogin(
-                            token = token,
-                            role = role,
-                            employeeId = employeeId
-                        )
+                    LoginScreen(
+                        onLoginSuccess = { token, user ->
 
-                        isLoggedIn = true   // 🔄 trigger recomposition
-                    }
+                            Log.d(
+                                "LOGIN",
+                                "Login success | role=${user.role} | employeeId=${user.id}"
+                            )
+
+                            session.saveLogin(
+                                token = token,
+                                userId = user.id.toString(),
+                                username = "",
+                                phoneNumber = "",
+                                role = user.role
+                            )
+
+                            isLoggedIn = true
+                        },
+                        onRegisterClick = {
+
+                            Log.d("MAIN", "Navigate to RegisterActivity")
+
+                            startActivity(
+                                Intent(this, RegisterActivity::class.java)
+                            )
+                        },
+                        onForgotPasswordClick = {
+                            Log.d("MAIN", "Forgot password clicked (disabled)")
+                        }
+                    )
+
 
                 } else {
+
+                    Log.d("MAIN", "User logged in → showing Dashboard")
 
                     DashboardScreen(
                         userRole = session.getRole(),
                         onLogout = {
+
+                            Log.d("MAIN", "User logged out")
+
                             session.logout()
-                            isLoggedIn = false  // 🔄 trigger recomposition
+                            isLoggedIn = false
                         }
                     )
                 }

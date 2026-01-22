@@ -1,6 +1,7 @@
 package com.propshop.crm
 
 import android.widget.Toast
+import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
@@ -16,15 +17,18 @@ import androidx.compose.ui.unit.dp
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
+import com.propshop.crm.UserDto
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
-    onLoginSuccess: (token: String, role: String, employeeId: String) -> Unit
+    onLoginSuccess: (token: String, user: UserDto) -> Unit,
+    onRegisterClick: () -> Unit,
+    onForgotPasswordClick: () -> Unit
 ) {
     val context = LocalContext.current
 
-    var username by remember { mutableStateOf("") }
+    var identifier by remember { mutableStateOf("") }   // ✅ FIXED
     var password by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
 
@@ -38,7 +42,6 @@ fun LoginScreen(
             verticalArrangement = Arrangement.Center
         ) {
 
-            // 🔵 LOGO
             Image(
                 painter = painterResource(id = R.drawable.propshop_logo),
                 contentDescription = "PropShop Logo",
@@ -54,12 +57,15 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // 👤 USERNAME
+            // 👤 USERNAME OR MOBILE
             OutlinedTextField(
-                value = username,
-                onValueChange = { username = it },
-                label = { Text("Username") },
+                value = identifier,
+                onValueChange = { identifier = it },
+                label = { Text("Username or Mobile Number") },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Text
+                ),
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -78,16 +84,31 @@ fun LoginScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            // 🔁 FORGOT PASSWORD
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = onForgotPasswordClick) {
+                    Text("Forgot Password?")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // 🔘 LOGIN BUTTON
             Button(
                 enabled = !loading,
                 onClick = {
-                    if (username.isBlank() || password.isBlank()) {
+
+                    Log.d("LOGIN_FLOW", "Login button clicked")
+
+                    if (identifier.isBlank() || password.isBlank()) {
                         Toast.makeText(
                             context,
-                            "Enter username and password",
+                            "Enter username/mobile and password",
                             Toast.LENGTH_SHORT
                         ).show()
                         return@Button
@@ -95,9 +116,14 @@ fun LoginScreen(
 
                     loading = true
 
-                    // 🔥 CALL LOGIN API
+                    Log.d("LOGIN_FLOW", "Calling login API with identifier=$identifier")
+
+
                     AuthApiClient.api.login(
-                        LoginRequest(username, password)
+                        LoginRequest(
+                            identifier = identifier.trim(),
+                            password = password
+                        )
                     ).enqueue(object : Callback<LoginResponse> {
 
                         override fun onResponse(
@@ -106,15 +132,18 @@ fun LoginScreen(
                         ) {
                             loading = false
 
-                            if (response.isSuccessful && response.body() != null) {
+                            Log.d("LOGIN_FLOW", "Response code: ${response.code()}")
+                            Log.d("LOGIN_FLOW", "Response body: ${response.body()}")
 
+
+                            if (response.isSuccessful && response.body() != null) {
                                 val body = response.body()!!
 
-                                val token = body.token
-                                val role = body.user.role
-                                val employeeId = body.user.id.toString()
+                                onLoginSuccess(
+                                    body.token,
+                                    body.user
+                                )
 
-                                onLoginSuccess(token, role, employeeId)
 
                             } else {
                                 Toast.makeText(
@@ -127,6 +156,7 @@ fun LoginScreen(
 
                         override fun onFailure(call: Call<LoginResponse>, t: Throwable) {
                             loading = false
+                            Log.e("LOGIN_FLOW", "Login API failed", t)
                             Toast.makeText(
                                 context,
                                 "Login failed: ${t.message}",
@@ -142,7 +172,13 @@ fun LoginScreen(
                 Text(if (loading) "Logging in..." else "Login")
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            TextButton(onClick = onRegisterClick) {
+                Text("Register New User")
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
 
             Text(
                 text = "© PropShop Technologies",

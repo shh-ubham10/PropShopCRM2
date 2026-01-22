@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.work.*
 import retrofit2.HttpException
 import java.util.concurrent.TimeUnit
+import org.json.JSONObject
 
 class CallUploadWorker(
     context: Context,
@@ -15,18 +16,26 @@ class CallUploadWorker(
     override suspend fun doWork(): Result {
 
         val fileUriStr = inputData.getString("fileUri")
-        val metadata = inputData.getString("metadata")
+        val metadataJson = inputData.getString("metadata")
 
-        if (fileUriStr.isNullOrEmpty() || metadata.isNullOrEmpty()) {
-            Log.e("CRM_UPLOAD", "Invalid input data")
+        if (fileUriStr.isNullOrEmpty() || metadataJson.isNullOrEmpty()) {
+            Log.e("CRM_UPLOAD", "❌ Invalid input data")
             return Result.failure()
         }
 
         val fileUri = Uri.parse(fileUriStr)
 
-        Log.d("CRM_UPLOAD", "Worker started")
-        Log.d("CRM_UPLOAD", "FileUri = $fileUri")
-        Log.d("CRM_UPLOAD", "Metadata = $metadata")
+        // ✅ Validate metadata JSON (VERY IMPORTANT)
+        try {
+            JSONObject(metadataJson)
+        } catch (e: Exception) {
+            Log.e("CRM_UPLOAD", "❌ Metadata is not valid JSON", e)
+            return Result.failure()
+        }
+
+        Log.d("CRM_UPLOAD", "🚀 Worker started")
+        Log.d("CRM_UPLOAD", "📂 FileUri = $fileUri")
+        Log.d("CRM_UPLOAD", "🧾 Metadata = $metadataJson")
 
         // Ensure retrofit + auth ready
         AuthApiClient.init(applicationContext)
@@ -36,27 +45,33 @@ class CallUploadWorker(
             val response = CallUploadManager.uploadCall(
                 context = applicationContext,
                 fileUri = fileUri,
-                metadataJson = metadata
+                metadataJson = metadataJson
             )
 
-            Log.d("CRM_UPLOAD", "Upload success: $response")
+            Log.d("CRM_UPLOAD", "✅ Upload success")
 
             Result.success()
 
         } catch (e: HttpException) {
 
+            val errorBody = e.response()?.errorBody()?.string()
+
             Log.e(
                 "CRM_UPLOAD",
-                "HTTP error ${e.code()} : ${e.response()?.errorBody()?.string()}",
+                "❌ HTTP ${e.code()} : $errorBody",
                 e
             )
 
-            // Retry only for server/network errors
-            if (e.code() >= 500) Result.retry() else Result.failure()
+            // Retry only for server issues
+            if (e.code() >= 500) {
+                Result.retry()
+            } else {
+                Result.failure()
+            }
 
         } catch (e: Exception) {
 
-            Log.e("CRM_UPLOAD", "Upload failed", e)
+            Log.e("CRM_UPLOAD", "❌ Upload failed (network / IO)", e)
             Result.retry()
         }
     }
@@ -68,6 +83,14 @@ class CallUploadWorker(
             fileUri: Uri,
             metadataJson: String
         ) {
+
+            // ✅ Validate JSON before enqueue
+            try {
+                JSONObject(metadataJson)
+            } catch (e: Exception) {
+                Log.e("CRM_UPLOAD", "❌ Invalid metadata JSON – not enqueued", e)
+                return
+            }
 
             val data = workDataOf(
                 "fileUri" to fileUri.toString(),
@@ -89,7 +112,11 @@ class CallUploadWorker(
                 .addTag("CALL_UPLOAD")
                 .build()
 
-            WorkManager.getInstance(context).enqueue(request)
+            WorkManager
+                .getInstance(context)
+                .enqueue(request)
+
+            Log.d("CRM_UPLOAD", "📤 Upload job enqueued")
         }
     }
 }

@@ -1,3 +1,4 @@
+
 package com.propshop.crm
 
 import okhttp3.MediaType.Companion.toMediaType
@@ -8,7 +9,7 @@ import org.json.JSONObject
 
 object ApiClient {
 
-    const val BASE_URL = "https://propshop-crm-backend.onrender.com/"
+    const val BASE_URL = "https://record-call.onrender.com/"
 
     fun sendCallData(payload: JSONObject) {
         try {
@@ -21,6 +22,8 @@ object ApiClient {
                 .url(BASE_URL)
                 .post(body)
                 .build()
+
+            print(request)
 
             client.newCall(request).enqueue(object : okhttp3.Callback {
                 override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {

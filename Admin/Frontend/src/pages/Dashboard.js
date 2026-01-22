@@ -65,14 +65,18 @@ export default function Dashboard() {
   }
 
   function applyExport() {
-    window.open((process.env.REACT_APP_API_BASE || "http://localhost:5000") + "/api/export", "_blank")
+    window.open((process.env.REACT_APP_API_BASE || "https://record-call.onrender.com") + "/api/export", "_blank")
   }
 
   if (!summary) return <div style={{ padding: "40px", color: "#6b7280" }}>Loading dashboard...</div>
 
-  const totalDuration = Math.floor((summary.totalDuration || 0) / 60)
-  const hours = Math.floor(totalDuration / 60)
-  const minutes = totalDuration % 60
+  const totalSeconds = Math.floor(summary.totalDuration || 0)
+
+const hours = Math.floor(totalSeconds / 3600)
+const minutes = Math.floor((totalSeconds % 3600) / 60)
+const seconds = totalSeconds % 60
+const pad = (n) => String(n).padStart(2, "0")
+
 
   return (
     <div className="main-content">
@@ -86,7 +90,7 @@ export default function Dashboard() {
       <div className="grid-container">
         <div className="stat-card">
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ fontSize: "14px" }}>📞</span>
+            <span style={{ fontSize: "20px" }}>📞</span>
             <div style={{ flex: 1 }}>
               <div className="stat-label">Total Calls</div>
               <div className="stat-value">{summary.total || 0}</div>
@@ -96,19 +100,20 @@ export default function Dashboard() {
 
         <div className="stat-card">
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ fontSize: "14px" }}>⏱️</span>
+            <span style={{ fontSize: "20px" }}>⏱️</span>
             <div style={{ flex: 1 }}>
               <div className="stat-label">Total Duration</div>
               <div className="stat-value">
-                {hours}h {minutes}m
-              </div>
+  {pad(hours)}h {pad(minutes)}m {pad(seconds)}s
+</div>
+
             </div>
           </div>
         </div>
 
         <div className="stat-card">
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ fontSize: "14px" }}>☎️</span>
+            <span style={{ fontSize: "20px" }}>☎️</span>
             <div style={{ flex: 1 }}>
               <div className="stat-label">Connected Calls</div>
               <div className="stat-value">{summary.incoming || 0}</div>
@@ -118,7 +123,7 @@ export default function Dashboard() {
 
         <div className="stat-card">
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ fontSize: "14px" }}>👤</span>
+            <span style={{ fontSize: "20px" }}>👤</span>
             <div style={{ flex: 1 }}>
               <div className="stat-label">Unique Clients</div>
               <div className="stat-value">{Object.keys(summary.byEmployee || {}).length}</div>
@@ -128,10 +133,10 @@ export default function Dashboard() {
 
         <div className="stat-card">
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ fontSize: "14px" }}>✕</span>
+            <span style={{ fontSize: "20px" }}>✕</span>
             <div style={{ flex: 1 }}>
               <div className="stat-label">Unanswered Calls</div>
-              <div className="stat-value">{summary.outgoing || 0}</div>
+              <div className="stat-value">{ 0}</div>
             </div>
           </div>
         </div>
@@ -255,7 +260,7 @@ export default function Dashboard() {
                           }}
                           onClick={() =>
                             setOpenAudio({
-                              src: `${process.env.REACT_APP_API_BASE || "http://localhost:5000"}/files/${c.filename}`,
+                              src: `${process.env.REACT_APP_API_BASE || "https://record-call.onrender.com"}/uploads/${c.filename}`,
                               filename: c.filename,
                               meta: {
                                 employeeId: c.employeeId,

@@ -8,6 +8,7 @@ import retrofit2.http.GET
 import retrofit2.http.Multipart
 import retrofit2.http.POST
 import retrofit2.http.Part
+import retrofit2.http.Query
 
 /* ================= API SERVICE ================= */
 
@@ -19,17 +20,28 @@ interface ApiService {
         @Body body: LoginRequest
     ): Call<LoginResponse>
 
-    // 📊 TODAY CALL COUNT (EMPLOYEE DASHBOARD)
-    @GET("api/today-calls")
-    fun getTodayCalls(): Call<TodayCallResponse>
+    // 🆕 REGISTER
+    @POST("api/register")
+    fun register(
+        @Body body: RegisterPayload
+    ): Call<RegisterResponse>
 
-    // 📞 CALL UPLOAD (EMPLOYEE → CRM)
+    // 📊 TODAY CALL COUNT
+    @GET("api/today-calls")
+    fun getTodayCalls(
+        @Query("employee_id") employeeId: String,
+        @Query("date") date: String
+    ): Call<TodayCallResponse>
+
+
+    // 📞 CALL UPLOAD
     @Multipart
     @POST("api/upload")
     fun uploadCall(
-        @Part file: MultipartBody.Part,
+        @Part audio: MultipartBody.Part,
         @Part("metadata") metadata: RequestBody
     ): Call<Unit>
 }
+
 
 

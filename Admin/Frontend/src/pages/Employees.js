@@ -21,16 +21,28 @@ export default function Employees() {
   }, [])
 
   async function loadEmployees() {
-    setLoading(true)
-    try {
-      const res = await api.get("/api/employees")
-      setEmployees(res.data || [])
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setLoading(false)
-    }
+  setLoading(true)
+  try {
+    const res = await api.get("/api/employees")
+
+    const normalized = res?.data?.employees.map(emp => ({
+      ...emp,
+      id: emp._id,
+      name: emp.username,
+      status: "active",
+      totalCalls: 0,
+      phone: emp.phone_number,
+    }))
+
+    setEmployees(normalized)
+  } catch (e) {
+    console.error(e)
+  } finally {
+    setLoading(false)
   }
+}
+
+
 
   function openAddModal() {
     setSelected(null)
@@ -237,7 +249,7 @@ export default function Employees() {
                     <tr key={emp.id}>
                       <td>{emp.name}</td>
                       <td>
-                        <code style={{ fontSize: "11px" }}>{emp.employeeId}</code>
+                        <code style={{ fontSize: "11px" }}>{emp.id}</code>
                       </td>
                       <td style={{ fontSize: "11px" }}>{emp.phone}</td>
                       <td style={{ fontSize: "11px" }}>{emp.role || "—"}</td>

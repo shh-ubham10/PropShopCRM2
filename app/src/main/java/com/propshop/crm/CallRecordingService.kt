@@ -73,30 +73,38 @@ class CallRecordingService : Service() {
             val dir = getExternalFilesDir(null)
                 ?: throw IllegalStateException("External dir not available")
 
-            // ✅ ASSIGN TO CLASS VARIABLE (IMPORTANT)
             outputFile = File(dir, "call_${number}_$time.m4a")
 
             recorder = MediaRecorder().apply {
-                setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
+                // ✅ MIC-ONLY (WORKS EVERYWHERE)
+                setAudioSource(MediaRecorder.AudioSource.MIC)
+
                 setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                 setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+
+                // ✅ Recommended quality settings
+                setAudioEncodingBitRate(128000)
+                setAudioSamplingRate(44100)
+
                 setOutputFile(outputFile!!.absolutePath)
                 prepare()
                 start()
             }
 
-            // ✅ SAVE FILE PATH AFTER START
+            // Save last file path
             getSharedPreferences("call_rec", Context.MODE_PRIVATE)
                 .edit()
                 .putString("last_file_path", outputFile!!.absolutePath)
                 .apply()
 
-            Log.d("CRM_CALL", "Recording started, file saved at: ${outputFile!!.absolutePath}")
+            Log.d("CRM_CALL", "MIC recording started: ${outputFile!!.absolutePath}")
 
         } catch (e: Exception) {
             Log.e("CRM_CALL", "Recording start failed", e)
+            isRecording = false
         }
     }
+
 
 
 

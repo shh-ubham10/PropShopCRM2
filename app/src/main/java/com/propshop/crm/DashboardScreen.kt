@@ -22,6 +22,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
@@ -33,8 +35,9 @@ fun DashboardScreen(
     onLogout: () -> Unit
 ) {
     val context = LocalContext.current
+    val session = remember { SessionManager(context) }
 
-    /* ---------------- REQUIRED PERMISSIONS ---------------- */
+    /* ---------------- PERMISSIONS ---------------- */
     val requiredPermissions = remember {
         mutableListOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -50,69 +53,78 @@ fun DashboardScreen(
 
     var permissionsGranted by remember { mutableStateOf(false) }
     var showPermissionDialog by remember { mutableStateOf(false) }
-    var refreshTrigger by remember { mutableStateOf(0) }
     var todayCalls by remember { mutableStateOf<Int?>(null) }
+    var serviceStarted by remember { mutableStateOf(false) }
+
 
     val permissionLauncher =
         rememberLauncherForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions()
         ) {
-            refreshTrigger++
+            permissionsGranted = checkPermissions(context, requiredPermissions)
         }
 
-    /* ---------------- MAIN LOGIC ---------------- */
-    LaunchedEffect(refreshTrigger) {
+    /* ---------------- MAIN EFFECT ---------------- */
+    LaunchedEffect(permissionsGranted) {
+
+        if (userRole == "admin") return@LaunchedEffect
 
         permissionsGranted = checkPermissions(context, requiredPermissions)
 
-        if (userRole != "admin") {
-
-            if (permissionsGranted) {
-
-                showPermissionDialog = false
-                startLocationService(context)
-
-                // ✅ CORRECT API ACCESS
-                val api = AuthApiClient.api
-
-                api.getTodayCalls().enqueue(object : retrofit2.Callback<TodayCallResponse> {
-
-                    override fun onResponse(
-                        call: retrofit2.Call<TodayCallResponse>,
-                        response: retrofit2.Response<TodayCallResponse>
-                    ) {
-                        todayCalls =
-                            if (response.isSuccessful)
-                                response.body()?.todayCalls ?: 0
-                            else
-                                0
-                    }
-
-                    override fun onFailure(
-                        call: retrofit2.Call<TodayCallResponse>,
-                        t: Throwable
-                    ) {
-                        todayCalls = 0
-                    }
-                })
-
-            } else {
-                showPermissionDialog = true
-                todayCalls = null
-            }
+        if (!permissionsGranted) {
+            showPermissionDialog = true
+            todayCalls = null
+            return@LaunchedEffect
         }
+
+        showPermissionDialog = false
+
+        // 🔥 START SERVICE ONLY ONCE
+        if (!serviceStarted) {
+            withContext(Dispatchers.IO) {
+                startLocationService(context)
+            }
+            serviceStarted = true
+        }
+
+        val todayDate = java.text.SimpleDateFormat(
+            "yyyy-MM-dd",
+            java.util.Locale.getDefault()
+        ).format(java.util.Date())
+
+        val employeeId = session.getEmployeeId()
+
+        AuthApiClient.api
+            .getTodayCalls(employeeId, todayDate)
+            .enqueue(object : Callback<TodayCallResponse> {
+
+                override fun onResponse(
+                    call: Call<TodayCallResponse>,
+                    response: Response<TodayCallResponse>
+                ) {
+                    todayCalls =
+                        if (response.isSuccessful)
+                            response.body()?.todayCalls ?: 0
+                        else
+                            0
+                }
+
+                override fun onFailure(
+                    call: Call<TodayCallResponse>,
+                    t: Throwable
+                ) {
+                    todayCalls = 0
+                }
+            })
     }
 
 
-    /* ---------------- PERMISSION POPUP ---------------- */
+    /* ---------------- PERMISSION DIALOG ---------------- */
     if (showPermissionDialog && userRole != "admin") {
         AlertDialog(
             onDismissRequest = {},
             confirmButton = {
-                Button(onClick = {
-                    openAppSettings(context)
-                    refreshTrigger++
-                }) {
+                Button(onClick = { openAppSettings(context) }) {
                     Text("Open Settings")
                 }
             },
@@ -126,7 +138,7 @@ fun DashboardScreen(
             title = { Text("Permissions Required") },
             text = {
                 Text(
-                    "PropShop CRM requires location, call recording and background permissions.\n\nPlease enable ALL permissions to continue."
+                    "Location, call recording and background permissions are required for tracking."
                 )
             }
         )
@@ -156,10 +168,9 @@ fun DashboardScreen(
                 .fillMaxSize()
         ) {
 
-            /* ---------- LOGO ---------- */
             Image(
                 painter = painterResource(id = R.drawable.propshop_logo),
-                contentDescription = "PropShop Logo",
+                contentDescription = null,
                 modifier = Modifier
                     .height(70.dp)
                     .align(Alignment.CenterHorizontally)
@@ -167,7 +178,6 @@ fun DashboardScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            /* ---------- HEADER ---------- */
             Text(
                 text = if (userRole == "admin")
                     "👑 Admin Dashboard"
@@ -179,19 +189,17 @@ fun DashboardScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            /* ---------- PERMISSION STATUS ---------- */
             PermissionCard(
                 title = "Permission Status",
                 isOk = permissionsGranted,
                 subtitle = if (permissionsGranted)
-                    "All mandatory permissions enabled"
+                    "All permissions enabled"
                 else
-                    "Permissions missing – tracking disabled"
+                    "Permissions missing"
             )
 
             Spacer(Modifier.height(16.dp))
 
-            /* ---------- EMPLOYEE VIEW ---------- */
             if (userRole != "admin") {
 
                 StatusCard("📍 Location Tracking", permissionsGranted)
@@ -208,12 +216,11 @@ fun DashboardScreen(
                     else
                         Color(0xFFFEE2E2)
                 )
-
             } else {
 
                 InfoCard(
                     title = "Admin Access",
-                    value = "Use Web CRM for reports & live tracking",
+                    value = "Use Web CRM for reports",
                     color = Color(0xFFEFF6FF)
                 )
             }

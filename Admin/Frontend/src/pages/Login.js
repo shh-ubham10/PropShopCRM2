@@ -8,7 +8,6 @@ export default function Login() {
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
-
   useEffect(() => {
     setUsername("");
     setPassword("");
@@ -24,11 +23,13 @@ export default function Login() {
     }
 
     try {
-      const res = await api.post("/api/login", { username, password });
+      const res = await api.post("/api/login", {
+        identifier: username,
+        password,
+      });
       localStorage.setItem("token", res.data.token);
 
       navigate("/dashboard", { replace: true });
-
     } catch (e) {
       setError("Invalid username or password");
     }
@@ -46,7 +47,7 @@ export default function Login() {
             width: "230px",
             margin: "0 auto 15px auto",
             display: "block",
-            filter: "drop-shadow(0px 2px 4px rgba(0,0,0,0.25))"
+            filter: "drop-shadow(0px 2px 4px rgba(0,0,0,0.25))",
           }}
         />
 
@@ -101,7 +102,7 @@ const styles = {
     width: "100%",
     backdropFilter: "blur(2px)",
     background: "rgba(0,0,0,0.55)",
-    zIndex: 0
+    zIndex: 0,
   },
 
   card: {

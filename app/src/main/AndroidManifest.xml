@@ -75,6 +75,8 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".RegisterActivity"/>
+
         <!-- Phone call listener -->
         <receiver
             android:name=".CallReceiver"

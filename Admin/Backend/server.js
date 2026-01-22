@@ -4,7 +4,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
-const bcrypt = require("bcrypt"); // IMPORTANT: must match hash generation
+const bcrypt = require("bcrypt");
 const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
@@ -17,7 +17,19 @@ app.use(cors());
 app.use(express.json());
 
 /* ============================
-   BASIC HEALTH CHECK
+   DATABASE CHECK
+============================ */
+(async () => {
+  try {
+    const res = await pool.query("SELECT NOW()");
+    console.log("✅ Database connected at:", res.rows[0].now);
+  } catch (err) {
+    console.error("❌ Database connection failed:", err.message);
+  }
+})();
+
+/* ============================
+   HEALTH CHECK
 ============================ */
 app.get("/", (_, res) => {
   res.send("PropShop CRM Backend is running");
@@ -36,33 +48,25 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 /* ============================
-   LOGIN (DEBUG ENABLED)
+   LOGIN
 ============================ */
 app.post("/api/login", async (req, res) => {
   try {
     const { username, password } = req.body;
 
-    console.log("LOGIN ATTEMPT:", username);
-
     const result = await pool.query(
-      "SELECT id, username, password_hash, role FROM users WHERE username=$1",
+      "SELECT id, username, password_hash, role FROM public.users WHERE username = $1",
       [username]
     );
 
-    console.log("DB RESULT:", result.rows);
-
     if (!result.rows.length) {
-      console.log("LOGIN FAIL: USER NOT FOUND");
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
     const user = result.rows[0];
-
     const match = await bcrypt.compare(password, user.password_hash);
-    console.log("PASSWORD MATCH:", match);
 
     if (!match) {
-      console.log("LOGIN FAIL: PASSWORD MISMATCH");
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
@@ -71,8 +75,6 @@ app.post("/api/login", async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: "12h" }
     );
-
-    console.log("LOGIN SUCCESS:", username);
 
     res.json({
       token,
@@ -88,7 +90,7 @@ app.post("/api/login", async (req, res) => {
 });
 
 /* ============================
-   CREATE USER (ADMIN ONLY)
+   CREATE USER (ADMIN)
 ============================ */
 app.post("/api/users", authMiddleware, async (req, res) => {
   try {
@@ -99,17 +101,18 @@ app.post("/api/users", authMiddleware, async (req, res) => {
     const { username, password, role } = req.body;
 
     const exists = await pool.query(
-      "SELECT id FROM users WHERE username=$1",
+      "SELECT id FROM public.users WHERE username = $1",
       [username]
     );
+
     if (exists.rows.length) {
-      return res.status(400).json({ error: "exists" });
+      return res.status(400).json({ error: "user exists" });
     }
 
     const hash = await bcrypt.hash(password, 10);
 
     await pool.query(
-      "INSERT INTO users (username, password_hash, role) VALUES ($1,$2,$3)",
+      "INSERT INTO public.users (username, password_hash, role) VALUES ($1,$2,$3)",
       [username, hash, role || "employee"]
     );
 
@@ -134,7 +137,6 @@ app.post(
       }
 
       const meta = JSON.parse(req.body.metadata || "{}");
-
       const {
         employee_id,
         phone_number,
@@ -149,7 +151,7 @@ app.post(
       }
 
       await pool.query(
-        `INSERT INTO calls
+        `INSERT INTO public.calls
          (employee_id, phone_number, call_type, start_ms, end_ms, duration_seconds, audio_file)
          VALUES ($1,$2,$3,$4,$5,$6,$7)`,
         [
@@ -178,9 +180,11 @@ app.get("/api/calls", authMiddleware, async (req, res) => {
   try {
     const result =
       req.user.role === "admin"
-        ? await pool.query("SELECT * FROM calls ORDER BY uploaded_at DESC")
+        ? await pool.query(
+            "SELECT * FROM public.calls ORDER BY uploaded_at DESC"
+          )
         : await pool.query(
-            "SELECT * FROM calls WHERE employee_id=$1 ORDER BY uploaded_at DESC",
+            "SELECT * FROM public.calls WHERE employee_id = $1 ORDER BY uploaded_at DESC",
             [req.user.id]
           );
 
@@ -200,12 +204,12 @@ app.get("/api/summary", authMiddleware, async (req, res) => {
   }
 
   try {
-    const total = await pool.query("SELECT COUNT(*) FROM calls");
+    const total = await pool.query("SELECT COUNT(*) FROM public.calls");
     const outgoing = await pool.query(
-      "SELECT COUNT(*) FROM calls WHERE call_type='outgoing'"
+      "SELECT COUNT(*) FROM public.calls WHERE call_type = 'outgoing'"
     );
     const duration = await pool.query(
-      "SELECT COALESCE(SUM(duration_seconds),0) AS total FROM calls"
+      "SELECT COALESCE(SUM(duration_seconds),0) AS total FROM public.calls"
     );
 
     res.json({
@@ -227,7 +231,7 @@ app.get("/files/:name", authMiddleware, async (req, res) => {
     const { name } = req.params;
 
     const result = await pool.query(
-      "SELECT employee_id FROM calls WHERE audio_file=$1",
+      "SELECT employee_id FROM public.calls WHERE audio_file = $1",
       [name]
     );
 
